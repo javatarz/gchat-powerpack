@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PROTOTYPE — Read later / Inbox interactions (wayfinder #7)</title>
+<style>
+  :root {
+    --saved: #6b7280; --saved-bg: #f3f4f6;
+    --due: #b91c1c; --due-bg: #fee2e2;
+    --resolved: #15803d; --resolved-bg: #dcfce7;
+    --border: #d1d5db;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Arial, sans-serif; margin: 0; padding: 24px 24px 100px; background: #fafafa; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .banner { background: #fff3cd; border: 1px solid #f0c36d; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 20px; }
+  .toolbar-row { display: flex; align-items: center; gap: 16px; font-size: 13px; margin-bottom: 16px; }
+  section { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  section > h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #555; margin: 0 0 12px; }
+
+  /* --- mock chat --- */
+  .chat-message { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 8px; border-radius: 6px; }
+  .chat-message:hover { background: #f5f7fa; }
+  .chat-meta { font-size: 12px; color: #666; margin-bottom: 2px; }
+  .chat-meta b { color: #222; }
+  .chat-text { font-size: 14px; }
+  .attach-pill { display: inline-block; font-size: 11px; background: #e5e7eb; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+  .hover-toolbar { display: flex; gap: 4px; flex-shrink: 0; margin-left: 12px; }
+  .hover-toolbar button { border: 1px solid var(--border); background: #fff; border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 14px; }
+  .hover-toolbar button:hover { background: #eef2ff; }
+  .hover-toolbar button.readlater { border-color: #6366f1; }
+
+  /* --- badges --- */
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+  .badge.Saved { color: var(--saved); background: var(--saved-bg); }
+  .badge.Due { color: var(--due); background: var(--due-bg); }
+  .badge.Resolved { color: var(--resolved); background: var(--resolved-bg); }
+
+  /* --- inbox item card (shared across variants) --- */
+  .item-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #fff; }
+  .item-card.is-Due { border-color: var(--due); }
+  .item-card .item-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .item-card .item-meta { font-size: 12px; color: #666; }
+  .item-card .item-snapshot { font-size: 13px; margin: 6px 0; }
+  .item-card .item-times { font-size: 11px; color: #555; margin-bottom: 6px; }
+  .item-card .item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .item-card .item-actions button { font-size: 12px; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--border); background: #f9fafb; cursor: pointer; }
+  .item-card .item-actions button:disabled { opacity: .45; cursor: not-allowed; }
+  .empty-note { font-size: 13px; color: #888; font-style: italic; }
+
+  /* --- variant B grouping --- */
+  .group-heading { font-size: 13px; font-weight: 700; margin: 14px 0 6px; color: #333; }
+  .group-heading:first-child { margin-top: 0; }
+
+  /* --- variant C kanban --- */
+  .kanban { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .kanban-col h3 { font-size: 12px; text-transform: uppercase; margin: 0 0 8px; }
+
+  details.resolved-drawer summary { cursor: pointer; font-size: 13px; color: #555; margin-top: 10px; }
+
+  /* --- dialogs --- */
+  dialog { border-radius: 8px; border: 1px solid var(--border); padding: 20px; width: 380px; max-width: 90vw; }
+  dialog h3 { margin-top: 0; font-size: 15px; }
+  dialog .quote { background: #f5f5f5; border-left: 3px solid #ccc; padding: 8px 10px; font-size: 13px; margin: 8px 0 14px; }
+  .field-row { margin-bottom: 12px; }
+  .field-row label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .quickpicks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .quickpicks button { font-size: 11px; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--border); background: #f9fafb; cursor: pointer; }
+  .quickpicks button.demo { border-color: #d97706; color: #b45309; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .dialog-actions button { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+  .dialog-actions button.primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  input[type="datetime-local"], input[type="number"] { font: inherit; padding: 4px 6px; border-radius: 5px; border: 1px solid var(--border); }
+
+  /* --- notifications --- */
+  #notif-container { position: fixed; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 999; }
+  .notif { width: 280px; background: #1f2937; color: #fff; border-radius: 8px; padding: 10px 12px; box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
+  .notif.due { background: #7f1d1d; }
+  .notif .notif-title { font-size: 12px; font-weight: 700; text-transform: uppercase; opacity: .8; }
+  .notif .notif-body { font-size: 13px; margin-top: 2px; }
+
+  /* --- switcher --- */
+  .switcher { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111; color: #fff; border-radius: 999px; padding: 8px 6px; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.3); font-size: 13px; z-index: 1000; }
+  .switcher button { background: none; border: none; color: #fff; cursor: pointer; font-size: 16px; padding: 4px 10px; }
+  .switcher .label { padding: 0 8px; min-width: 200px; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>PROTOTYPE — Read later / Inbox interactions</h1>
+<div class="banner">
+  🧪 Throwaway prototype for wayfinder ticket <b>#7 (Design: Read later trigger, reminder dialog, and Inbox interactions)</b>.
+  Not wired into the real extension — the "Google Chat" panel below is a fake standing in for the real DOM.
+  Functional fidelity only, no visual polish.
+</div>
+
+<div class="toolbar-row">
+  <label><input type="checkbox" id="chatTabOpenToggle" checked> Chat tab currently open (controls whether "Refresh Snapshot" is available)</label>
+  <span id="clock" style="color:#888"></span>
+</div>
+
+<section>
+  <h2>Google Chat (mock)</h2>
+  <div id="chat-mock"></div>
+</section>
+
+<section>
+  <h2>Inbox</h2>
+  <div id="inbox"></div>
+</section>
+
+<dialog id="reminder-dialog">
+  <h3 id="dialog-title">Read later</h3>
+  <div class="quote" id="dialog-quote"></div>
+  <div class="field-row">
+    <label><input type="checkbox" id="setReminderCheckbox"> Set a Reminder</label>
+  </div>
+  <div id="reminderFields" style="display:none">
+    <div class="field-row">
+      <label>Reminder time</label>
+      <div class="quickpicks">
+        <button type="button" class="demo" data-quick="10s">⚡ Demo: 10s</button>
+        <button type="button" data-quick="15m">15 min</button>
+        <button type="button" data-quick="1h">1 hour</button>
+        <button type="button" data-quick="tomorrow9">Tomorrow 9am</button>
+      </div>
+      <input type="datetime-local" id="reminderTimeInput" step="1">
+    </div>
+    <div class="field-row">
+      <label><input type="checkbox" id="escalateCheckbox" checked> Escalate to Due if unresolved</label>
+      <div id="dueOffsetRow" style="margin-top:6px">
+        <input type="number" id="dueOffsetInput" value="15" min="0.1" step="0.1" style="width:70px"> minutes after Reminder
+        <span style="font-size:11px;color:#888"> (try a small number like 0.2 to see Due fire quickly in this demo)</span>
+      </div>
+      <div id="dueDisabledNote" style="display:none;font-size:12px;color:#888">Due time = Reminder time (no escalation window).</div>
+    </div>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" id="dialogCancel">Cancel</button>
+    <button type="button" id="dialogSave" class="primary">Save</button>
+    <button type="button" id="dialogRemoveReminder" style="display:none;color:#b91c1c">Remove Reminder</button>
+  </div>
+</dialog>
+
+<div id="notif-container"></div>
+
+<div class="switcher">
+  <button id="prevVariant">←</button>
+  <span class="label" id="variantLabel"></span>
+  <button id="nextVariant">→</button>
+</div>
+
+<script>
+// ---------- state ----------
+const VARIANTS = [
+  { key: 'A', name: 'Flat timeline' },
+  { key: 'B', name: 'Grouped by space' },
+  { key: 'C', name: 'Kanban by status' },
+];
+
+const mockMessages = [
+  { id: 'm1', spaceId: 'spaces/eng123', threadId: 'topicA1', spaceName: '#eng-team', senderName: 'Priya Shah', text: 'Can you review the PR before EOD? Also double check the migration script against staging.', hasAttachment: false },
+  { id: 'm2', spaceId: 'spaces/design45', threadId: 'topicB2', spaceName: '#design', senderName: 'Alex Kim', text: 'Updated mockups are attached, take a look when you get a chance and let me know your thoughts.', hasAttachment: true },
+  { id: 'm3', spaceId: 'spaces/eng123', threadId: 'topicA3', spaceName: '#eng-team', senderName: 'Priya Shah', text: 'Deploy is scheduled for 5pm today, heads up in case anything looks off after.', hasAttachment: false },
+  { id: 'm4', spaceId: 'spaces/random9', threadId: 'topicC4', spaceName: '#random', senderName: 'Sam Lee', text: 'Anyone up for lunch at the new place downtown on Friday?', hasAttachment: false },
+];
+
+let savedMessages = []; // the Saved Message objects
+let variantIndex = 0;
+let editingId = null; // when dialog is used to edit an existing item vs create new
+
+function deepLinkFor(spaceId, threadId) {
+  return `https://chat.google.com/room/${spaceId.split('/')[1]}/${threadId}`;
+}
+
+function fmtTime(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ---------- mock chat rendering ----------
+function renderChat() {
+  const el = document.getElementById('chat-mock');
+  el.innerHTML = '';
+  mockMessages.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'chat-message';
+    row.innerHTML = `
+      <div>
+        <div class="chat-meta"><b>${m.senderName}</b> · ${m.spaceName}${m.hasAttachment ? '<span class="attach-pill">📎 attachment</span>' : ''}</div>
+        <div class="chat-text">${m.text}</div>
+      </div>
+      <div class="hover-toolbar">
+        <button title="React">🙂</button>
+        <button title="Reply">↩️</button>
+        <button class="readlater" title="Read later" data-msg="${m.id}">🔖</button>
+      </div>`;
+    row.querySelector('.readlater').addEventListener('click', () => openCreateDialog(m));
+    el.appendChild(row);
+  });
+}
+
+// ---------- dialog ----------
+const dlg = document.getElementById('reminder-dialog');
+let dialogTargetMessage = null;
+
+function openCreateDialog(mockMsg) {
+  editingId = null;
+  dialogTargetMessage = mockMsg;
+  document.getElementById('dialog-title').textContent = 'Read later';
+  document.getElementById('dialog-quote').textContent = mockMsg.text;
+  document.getElementById('setReminderCheckbox').checked = false;
+  document.getElementById('reminderFields').style.display = 'none';
+  document.getElementById('escalateCheckbox').checked = true;
+  document.getElementById('dueOffsetInput').value = 15;
+  document.getElementById('dueOffsetRow').style.display = 'block';
+  document.getElementById('dueDisabledNote').style.display = 'none';
+  document.getElementById('reminderTimeInput').value = '';
+  document.getElementById('dialogRemoveReminder').style.display = 'none';
+  dlg.showModal();
+}
+
+function openEditDialog(saved) {
+  editingId = saved.id;
+  dialogTargetMessage = null;
+  document.getElementById('dialog-title').textContent = 'Edit Reminder';
+  document.getElementById('dialog-quote').textContent = saved.snapshot;
+  const hasReminder = !!saved.reminderTime;
+  document.getElementById('setReminderCheckbox').checked = hasReminder;
+  document.getElementById('reminderFields').style.display = hasReminder ? 'block' : 'none';
+  if (hasReminder) {
+    document.getElementById('reminderTimeInput').value = toLocalInputValue(saved.reminderTime);
+    const escalate = saved.dueTime !== saved.reminderTime;
+    document.getElementById('escalateCheckbox').checked = escalate;
+    document.getElementById('dueOffsetRow').style.display = escalate ? 'block' : 'none';
+    document.getElementById('dueDisabledNote').style.display = escalate ? 'none' : 'block';
+    document.getElementById('dueOffsetInput').value = escalate ? Math.round((saved.dueTime - saved.reminderTime) / 60000 * 10) / 10 : 15;
+  }
+  document.getElementById('dialogRemoveReminder').style.display = hasReminder && saved.status === 'Saved' ? 'inline-block' : 'none';
+  dlg.showModal();
+}
+
+function toLocalInputValue(ms) {
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+document.getElementById('setReminderCheckbox').addEventListener('change', e => {
+  document.getElementById('reminderFields').style.display = e.target.checked ? 'block' : 'none';
+});
+document.getElementById('escalateCheckbox').addEventListener('change', e => {
+  document.getElementById('dueOffsetRow').style.display = e.target.checked ? 'block' : 'none';
+  document.getElementById('dueDisabledNote').style.display = e.target.checked ? 'none' : 'block';
+});
+document.querySelectorAll('.quickpicks [data-quick]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const now = Date.now();
+    let t;
+    if (btn.dataset.quick === '10s') t = now + 10_000;
+    else if (btn.dataset.quick === '15m') t = now + 15 * 60_000;
+    else if (btn.dataset.quick === '1h') t = now + 60 * 60_000;
+    else if (btn.dataset.quick === 'tomorrow9') {
+      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); t = d.getTime();
+    }
+    document.getElementById('reminderTimeInput').value = toLocalInputValue(t);
+  });
+});
+document.getElementById('dialogCancel').addEventListener('click', () => dlg.close());
+document.getElementById('dialogRemoveReminder').addEventListener('click', () => {
+  const item = savedMessages.find(s => s.id === editingId);
+  if (item) { item.reminderTime = null; item.dueTime = null; renderInbox(); }
+  dlg.close();
+});
+document.getElementById('dialogSave').addEventListener('click', () => {
+  const setReminder = document.getElementById('setReminderCheckbox').checked;
+  let reminderTime = null, dueTime = null;
+  if (setReminder) {
+    const val = document.getElementById('reminderTimeInput').value;
+    if (!val) { alert('Pick a reminder time or a quick-pick option.'); return; }
+    reminderTime = new Date(val).getTime();
+    const escalate = document.getElementById('escalateCheckbox').checked;
+    dueTime = escalate ? reminderTime + document.getElementById('dueOffsetInput').value * 60_000 : reminderTime;
+  }
+  if (editingId) {
+    const item = savedMessages.find(s => s.id === editingId);
+    item.reminderTime = reminderTime;
+    item.dueTime = dueTime;
+    if (item.status === 'Due' && (!dueTime || dueTime > Date.now())) item.status = 'Saved'; // editing pulls it back out of Due
+  } else {
+    const m = dialogTargetMessage;
+    savedMessages.push({
+      id: `${m.spaceId}:${m.threadId}:${Date.now()}`,
+      spaceId: m.spaceId, threadId: m.threadId, deepLink: deepLinkFor(m.spaceId, m.threadId),
+      senderName: m.senderName, spaceName: m.spaceName, snapshot: m.text, hasAttachment: m.hasAttachment,
+      reminderTime, dueTime, status: 'Saved', savedAt: Date.now(), resolvedAt: null, _reminderFired: false,
+    });
+  }
+  dlg.close();
+  renderInbox();
+});
+
+// ---------- inbox item actions ----------
+function refreshSnapshot(id) {
+  const item = savedMessages.find(s => s.id === id);
+  if (!item) return;
+  item.snapshot = item.snapshot + ' [refreshed: edited example text]';
+  renderInbox();
+  toast('Snapshot refreshed from live message.');
+}
+function resolveItem(id) {
+  const item = savedMessages.find(s => s.id === id);
+  if (!item) return;
+  item.status = 'Resolved';
+  item.resolvedAt = Date.now();
+  pruneResolvedCap();
+  renderInbox();
+}
+
+const RESOLVED_CAP = 100; // keep only the most recent N Resolved items; older ones are auto-deleted
+function pruneResolvedCap() {
+  const resolved = savedMessages.filter(s => s.status === 'Resolved').sort((a, b) => b.resolvedAt - a.resolvedAt);
+  const overflow = resolved.slice(RESOLVED_CAP); // oldest beyond the cap
+  if (overflow.length === 0) return;
+  const overflowIds = new Set(overflow.map(s => s.id));
+  savedMessages = savedMessages.filter(s => !overflowIds.has(s.id));
+}
+
+function deleteItem(id) {
+  savedMessages = savedMessages.filter(s => s.id !== id);
+  renderInbox();
+}
+function clearAllResolved() {
+  const resolved = savedMessages.filter(s => s.status === 'Resolved');
+  if (resolved.length === 0) return;
+  if (!confirm(`Permanently delete all ${resolved.length} resolved item(s)? This can't be undone.`)) return;
+  savedMessages = savedMessages.filter(s => s.status !== 'Resolved');
+  renderInbox();
+}
+
+function toast(msg) {
+  const n = document.createElement('div');
+  n.className = 'notif';
+  n.style.background = '#374151';
+  n.innerHTML = `<div class="notif-body">${msg}</div>`;
+  document.getElementById('notif-container').appendChild(n);
+  setTimeout(() => n.remove(), 2500);
+}
+
+// ---------- shared item card ----------
+function renderItemCard(item) {
+  const card = document.createElement('div');
+  card.className = 'item-card' + (item.status === 'Due' ? ' is-Due' : '');
+  const chatOpen = document.getElementById('chatTabOpenToggle').checked;
+  card.innerHTML = `
+    <div class="item-top">
+      <div class="item-meta"><b>${item.senderName}</b> · ${item.spaceName}${item.hasAttachment ? '<span class="attach-pill">📎</span>' : ''}</div>
+      <span class="badge ${item.status}">${item.status}</span>
+    </div>
+    <div class="item-snapshot">${item.snapshot}</div>
+    <div class="item-times">
+      Saved ${fmtTime(item.savedAt)}
+      ${item.reminderTime ? ` · Reminder ${fmtTime(item.reminderTime)}` : ''}
+      ${item.dueTime && item.dueTime !== item.reminderTime ? ` · Due ${fmtTime(item.dueTime)}` : ''}
+      ${item.resolvedAt ? ` · Resolved ${fmtTime(item.resolvedAt)}` : ''}
+    </div>
+    <div class="item-actions">
+      <button class="refresh-btn" ${chatOpen ? '' : 'disabled title="Open this message in Chat to refresh its Snapshot"'}>Refresh Snapshot</button>
+      ${item.status !== 'Resolved' ? '<button class="edit-btn">Edit Reminder</button>' : ''}
+      ${item.status !== 'Resolved' ? '<button class="resolve-btn">Resolve</button>' : ''}
+      ${item.status === 'Resolved' ? '<button class="delete-btn" style="color:#b91c1c">Delete</button>' : ''}
+    </div>`;
+  card.querySelector('.refresh-btn').addEventListener('click', () => refreshSnapshot(item.id));
+  const editBtn = card.querySelector('.edit-btn');
+  if (editBtn) editBtn.addEventListener('click', () => openEditDialog(item));
+  const deleteBtn = card.querySelector('.delete-btn');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteItem(item.id));
+  const resolveBtn = card.querySelector('.resolve-btn');
+  if (resolveBtn) resolveBtn.addEventListener('click', () => resolveItem(item.id));
+  return card;
+}
+
+// ---------- variants ----------
+function renderVariantA(container, items) {
+  const unresolved = items.filter(i => i.status !== 'Resolved')
+    .sort((a, b) => (a.dueTime ?? a.reminderTime ?? Infinity) - (b.dueTime ?? b.reminderTime ?? Infinity));
+  const resolved = items.filter(i => i.status === 'Resolved').sort((a, b) => b.resolvedAt - a.resolvedAt);
+  if (unresolved.length === 0) container.appendChild(emptyNote());
+  unresolved.forEach(i => container.appendChild(renderItemCard(i)));
+  if (resolved.length) {
+    const details = document.createElement('details');
+    details.className = 'resolved-drawer';
+    details.innerHTML = `
+      <summary>Resolved (${resolved.length})</summary>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 10px">
+        <span style="font-size:11px;color:#888">Keeps the most recent ${RESOLVED_CAP} — older ones are auto-deleted.</span>
+        <button class="clear-all-btn" style="font-size:12px;padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:#f9fafb;cursor:pointer;color:#b91c1c">Clear all</button>
+      </div>`;
+    details.querySelector('.clear-all-btn').addEventListener('click', clearAllResolved);
+    resolved.forEach(i => details.appendChild(renderItemCard(i)));
+    container.appendChild(details);
+  }
+}
+
+function renderVariantB(container, items) {
+  if (items.length === 0) { container.appendChild(emptyNote()); return; }
+  const groups = {};
+  items.forEach(i => { (groups[i.spaceName] ??= []).push(i); });
+  Object.keys(groups).sort().forEach(space => {
+    const h = document.createElement('div');
+    h.className = 'group-heading';
+    h.textContent = space;
+    container.appendChild(h);
+    groups[space].sort((a, b) => b.savedAt - a.savedAt).forEach(i => container.appendChild(renderItemCard(i)));
+  });
+}
+
+function renderVariantC(container, items) {
+  const kanban = document.createElement('div');
+  kanban.className = 'kanban';
+  ['Saved', 'Due', 'Resolved'].forEach(status => {
+    const col = document.createElement('div');
+    col.className = 'kanban-col';
+    col.innerHTML = `<h3>${status}</h3>`;
+    const colItems = items.filter(i => i.status === status);
+    if (colItems.length === 0) col.appendChild(emptyNote());
+    colItems.forEach(i => col.appendChild(renderItemCard(i)));
+    kanban.appendChild(col);
+  });
+  container.appendChild(kanban);
+}
+
+function emptyNote() {
+  const p = document.createElement('p');
+  p.className = 'empty-note';
+  p.textContent = 'Nothing here yet — click 🔖 on a message above.';
+  return p;
+}
+
+function renderInbox() {
+  const container = document.getElementById('inbox');
+  container.innerHTML = '';
+  const renderers = { A: renderVariantA, B: renderVariantB, C: renderVariantC };
+  renderers[VARIANTS[variantIndex].key](container, savedMessages);
+}
+
+// ---------- reminder/due firing ----------
+function checkTimers() {
+  const now = Date.now();
+  let changed = false;
+  savedMessages.forEach(item => {
+    if (item.status === 'Resolved') return;
+    if (item.reminderTime && !item._reminderFired && now >= item.reminderTime) {
+      item._reminderFired = true;
+      fireNotification('Reminder', item);
+      changed = true;
+    }
+    if (item.dueTime && item.status !== 'Due' && now >= item.dueTime) {
+      item.status = 'Due';
+      fireNotification('Due', item);
+      changed = true;
+    }
+  });
+  if (changed) renderInbox();
+  document.getElementById('clock').textContent = new Date(now).toLocaleTimeString();
+}
+setInterval(checkTimers, 1000);
+
+function fireNotification(kind, item) {
+  const n = document.createElement('div');
+  n.className = 'notif' + (kind === 'Due' ? ' due' : '');
+  n.innerHTML = `<div class="notif-title">${kind === 'Due' ? '⚠️ Due' : '⏰ Reminder'}</div><div class="notif-body">${item.senderName}: ${item.snapshot.slice(0, 80)}</div>`;
+  n.addEventListener('click', () => {
+    n.remove();
+    toast(`Simulated: navigated to ${item.deepLink}`);
+  });
+  document.getElementById('notif-container').appendChild(n);
+  setTimeout(() => n.remove(), 8000);
+}
+
+// ---------- switcher ----------
+function renderSwitcher() {
+  document.getElementById('variantLabel').textContent = `${VARIANTS[variantIndex].key} — ${VARIANTS[variantIndex].name}`;
+}
+document.getElementById('prevVariant').addEventListener('click', () => { variantIndex = (variantIndex + VARIANTS.length - 1) % VARIANTS.length; syncVariantToUrl(); });
+document.getElementById('nextVariant').addEventListener('click', () => { variantIndex = (variantIndex + 1) % VARIANTS.length; syncVariantToUrl(); });
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft') document.getElementById('prevVariant').click();
+  if (e.key === 'ArrowRight') document.getElementById('nextVariant').click();
+});
+function syncVariantToUrl() {
+  const params = new URLSearchParams(location.search);
+  params.set('variant', VARIANTS[variantIndex].key);
+  history.replaceState(null, '', '?' + params.toString());
+  renderSwitcher();
+  renderInbox();
+}
+document.getElementById('chatTabOpenToggle').addEventListener('change', renderInbox);
+
+// ---------- init ----------
+(function init() {
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('variant');
+  const idx = VARIANTS.findIndex(v => v.key === (requested || '').toUpperCase());
+  variantIndex = idx >= 0 ? idx : 0;
+  renderChat();
+  renderSwitcher();
+  renderInbox();
+  checkTimers();
+})();
+</script>
+</body>
+</html>
