@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Google Chat Powerpack",
+  "version": "0.1.0",
+  "description": "Productivity features layered on top of Google Chat, starting with Reminders on Starred messages.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.google.com/*",
+        "https://mail.google.com/chat/*"
+      ],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
