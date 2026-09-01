@@ -124,7 +124,8 @@
         <button type="button" data-quick="1h">1 hour</button>
         <button type="button" data-quick="tomorrow9">Tomorrow 9am</button>
       </div>
-      <input type="datetime-local" id="reminderTimeInput" step="1">
+      <input type="datetime-local" id="reminderTimeInput" step="300">
+      <div style="font-size:11px;color:#888;margin-top:2px">Picker steps in 5-minute increments (matches the 5-minute sweep — see issue #8) — type an exact time for finer control.</div>
     </div>
     <div class="field-row">
       <label><input type="checkbox" id="escalateCheckbox" checked> Escalate to Due if unresolved</label>
@@ -253,13 +254,16 @@ document.getElementById('escalateCheckbox').addEventListener('change', e => {
   document.getElementById('dueOffsetRow').style.display = e.target.checked ? 'block' : 'none';
   document.getElementById('dueDisabledNote').style.display = e.target.checked ? 'none' : 'block';
 });
+const FIVE_MIN_MS = 5 * 60_000;
+function roundUpTo5Min(ms) { return Math.ceil(ms / FIVE_MIN_MS) * FIVE_MIN_MS; }
+
 document.querySelectorAll('.quickpicks [data-quick]').forEach(btn => {
   btn.addEventListener('click', () => {
     const now = Date.now();
     let t;
-    if (btn.dataset.quick === '10s') t = now + 10_000;
-    else if (btn.dataset.quick === '15m') t = now + 15 * 60_000;
-    else if (btn.dataset.quick === '1h') t = now + 60 * 60_000;
+    if (btn.dataset.quick === '10s') t = now + 10_000; // demo-only: intentionally not 5-min-aligned
+    else if (btn.dataset.quick === '15m') t = roundUpTo5Min(now + 15 * 60_000);
+    else if (btn.dataset.quick === '1h') t = roundUpTo5Min(now + 60 * 60_000);
     else if (btn.dataset.quick === 'tomorrow9') {
       const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); t = d.getTime();
     }
